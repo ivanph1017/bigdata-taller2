@@ -18,23 +18,15 @@ object App {
             .filter( fields => fields(14).toInt < 24 )
   }
 
-  def process() {
-    val max2 = getGKStream().take(2)
+  def getGKs() {
+    val max2 = GK.getGKStream().take(2)
     MySparkContext.getSparkContext().parallelize(max2)
-      .map( fields => fields(0) + "," + fields(1) + "," +
-            fields(2) + "," + fields(3) )
+      .map( fields => fields(0) + "," + fields(1) )
       .saveAsTextFile("data/resultadoGK/")
   }
 
   def main(args : Array[String]) {
-    process()
-  }
-
-  def getGKStream() : RDD[Array[String]] = {
-    return getSelectablePlayersRDD().filter( fields => fields(15).toUpperCase == "GK" )
-            .filter( fields => fields(0) != "" && fields(14) != "" && fields(25) != "" )
-            .map( fields => Array( fields(0), fields(14), fields(15), fields(25) ) )
-            .sortBy( fields => fields(3).toInt,  ascending = false )
+    getGKs()
   }
 
 }
@@ -49,6 +41,41 @@ object MySparkContext {
       this.sc = new SparkContext(conf)
     }
     return this.sc
+  }
+
+}
+
+object MyMath {
+
+  def getRddPercentile(inputScore: RDD[String], percentile: Double): Double = {
+    val numEntries = inputScore.split(",").length().toDouble
+    val retrievedEntry = (percentile * numEntries / 100.0 ).min(numEntries).max(0).toInt
+
+    return inputScore
+            .flatmap(scoreArray => scoreArray.split(",") )
+            .map( score => score.toInt )
+            .sortBy { case (score) => score }
+            .zipWithIndex()
+            .filter { case (score, index) => index == retrievedEntry }
+            .map { case (score, index) => score }
+            .collect()(0)
+  }
+
+}
+
+object GK {
+
+  def getGKStream() : RDD[String, Double] = {
+    return getSelectablePlayersRDD().filter( fields => fields(15).toUpperCase == "GK" )
+            .filter( fields => fields(0) != "" && fields(14) != "" && fields(25) != ""
+                               fields(48) != "" && fields(49) != "" && fields(50) != ""
+                               fields(51) != "" && fields(52) != "" )
+            .map( fields => Array(fields(0), fields(14) + "," + fields(15) + ","
+                      + fields(25) + "," + fields(48) + "," + fields(49) + ","
+                      + fields(50) + "," + fields(51) + "," + fields(52) ) )
+            .map( ( x1, x2 ) =>  Array(x1, MyMath.getRddPercentile( MySparkContext
+              .getSparkContext().parallelize( x2 ) ) ) )
+            .sortBy( fields => fields(1),  ascending = false )
   }
 
 }
