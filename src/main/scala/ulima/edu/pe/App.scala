@@ -18,15 +18,29 @@ object App {
             .filter( fields => fields(14).toInt < 24 )
   }
 
+  def main(args : Array[String]) {
+    getGKs()
+  }
+
   def getGKs() {
-    val max2 = GK.getGKStream().take(2)
+    val max2 = getGKStream().take(2)
     MySparkContext.getSparkContext().parallelize(max2)
       .map( fields => fields(0) + "," + fields(1) )
       .saveAsTextFile("data/resultadoGK/")
   }
 
-  def main(args : Array[String]) {
-    getGKs()
+  def getGKStream() : RDD[Array[String]] = {
+    getSelectablePlayersRDD().filter( fields => fields(15).toUpperCase == "GK" )
+            .filter( fields => fields(0) != "" && fields(14) != "" &&
+                               fields(25) != "" && fields(48) != "" &&
+                               fields(49) != "" && fields(50) != "" &&
+                               fields(51) != "" && fields(52) != "" )
+            .map( fields => Array(fields(0), fields(14) + "," + fields(15) + ","
+                      + fields(25) + "," + fields(48) + "," + fields(49) + ","
+                      + fields(50) + "," + fields(51) + "," + fields(52) ) )
+            .map( fields =>  Array(fields(0),
+            MyMath.getRddPercentile( fields(1), 50 ).toString ) )
+            .sortBy( fields => fields(1).toDouble, ascending = false )
   }
 
 }
@@ -47,35 +61,19 @@ object MySparkContext {
 
 object MyMath {
 
-  def getRddPercentile(inputScore: RDD[String], percentile: Double): Double = {
-    val numEntries = inputScore.split(",").length().toDouble
+  def getRddPercentile(inputScore: String, percentile: Double): Double = {
+    val entryArray = inputScore.split(",")
+    val numEntries = entryArray.length.toDouble
     val retrievedEntry = (percentile * numEntries / 100.0 ).min(numEntries).max(0).toInt
 
-    return inputScore
-            .flatmap(scoreArray => scoreArray.split(",") )
-            .map( score => score.toInt )
+    return entryArray
+            .flatMap( scoreArray => for (s <- scoreArray) yield s )
+            .map( score => score.toDouble )
             .sortBy { case (score) => score }
-            .zipWithIndex()
+            .zipWithIndex
             .filter { case (score, index) => index == retrievedEntry }
             .map { case (score, index) => score }
-            .collect()(0)
-  }
-
-}
-
-object GK {
-
-  def getGKStream() : RDD[String, Double] = {
-    return getSelectablePlayersRDD().filter( fields => fields(15).toUpperCase == "GK" )
-            .filter( fields => fields(0) != "" && fields(14) != "" && fields(25) != ""
-                               fields(48) != "" && fields(49) != "" && fields(50) != ""
-                               fields(51) != "" && fields(52) != "" )
-            .map( fields => Array(fields(0), fields(14) + "," + fields(15) + ","
-                      + fields(25) + "," + fields(48) + "," + fields(49) + ","
-                      + fields(50) + "," + fields(51) + "," + fields(52) ) )
-            .map( ( x1, x2 ) =>  Array(x1, MyMath.getRddPercentile( MySparkContext
-              .getSparkContext().parallelize( x2 ) ) ) )
-            .sortBy( fields => fields(1),  ascending = false )
+            .take(1)(0)
   }
 
 }
